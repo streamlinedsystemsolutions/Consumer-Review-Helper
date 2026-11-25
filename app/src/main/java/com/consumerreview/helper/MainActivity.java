@@ -127,7 +127,6 @@ public final class MainActivity extends Activity {
         if(mode==4&&!model.isEmpty())names.add(quoted(model));
         if(names.isEmpty())return "";
         String base=names.size()==1?names.iterator().next():"("+String.join(" OR ",names)+")";
-        if(mode!=4&&!model.isEmpty())base+=" "+quoted(model);
         return base;
     }
     private void search(String terms){
