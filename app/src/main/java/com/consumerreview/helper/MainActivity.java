@@ -15,7 +15,10 @@ import android.widget.*;
 public final class MainActivity extends Activity {
     private SharedPreferences prefs;
     private LinearLayout root;
-    private EditText review, company;
+    private EditText review, company, aliases, domain, product;
+    private Spinner engine, identity;
+    private LinearLayout discovered;
+    private boolean scanning;
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences("review_helper", MODE_PRIVATE);
@@ -47,11 +50,53 @@ public final class MainActivity extends Activity {
             Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,review.getText().toString());
             startActivity(Intent.createChooser(send,"Share your review"));
         });
-        label("Find a review page",20);
-        label("Open a search for your company, then verify the listing and submit only your own genuine experience.",15);
-        button("Search Google for reviews",v->search("customer reviews write a review"));
-        button("Search Trustpilot",v->search("site:trustpilot.com/review"));
-        button("Search independent product reviews",v->search("product review customer experience"));
+        label("Company discovery",20);
+        label("Add alternate business names, the official website and product name for more precise results.",15);
+        label("Other business names (separate with commas)",15);
+        aliases=editor("aliases","",2);
+        label("Official website (optional)",15);
+        domain=editor("domain","",1);
+        label("Product or model (optional)",15);
+        product=editor("product","",1);
+        label("Search engine",15);
+        engine=new Spinner(this);
+        engine.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Google","Bing","DuckDuckGo"}));
+        root.addView(engine);
+        label("Search identity",15);
+        identity=new Spinner(this);
+        identity.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"All entered names","Main company","Alternate names","Website domain","Product or model"}));
+        root.addView(identity);
+        button("Discover links on official website",v->discover());
+        label("Links found on the official website (review eligibility not verified)",15);
+        discovered=new LinearLayout(this);discovered.setOrientation(LinearLayout.VERTICAL);root.addView(discovered);
+        label("Independent review platforms",20);
+        query("General customer reviews","customer reviews write a review");
+        query("Trustpilot","site:trustpilot.com/review");
+        query("Yelp","site:yelp.com");
+        query("Google Maps / business profile","Google Maps business reviews");
+        query("BBB business profiles","site:bbb.org business profile");
+        query("Sitejabber / SmartCustomer","(site:sitejabber.com OR site:smartcustomer.com)");
+        query("ResellerRatings","site:resellerratings.com");
+        query("Reviews.io","site:reviews.io");
+        query("ScamAdviser","site:scamadviser.com");
+        query("ConsumerAffairs","site:consumeraffairs.com");
+        query("Industry-specific review sites","customer product reviews independent review website");
+        label("Social accounts and recommendations",20);
+        query("Facebook reviews / recommendations","site:facebook.com reviews recommendations");
+        query("Facebook company page","site:facebook.com");
+        query("Instagram official account","site:instagram.com");
+        query("YouTube official channel","site:youtube.com official");
+        query("X / Twitter customer support","(site:x.com OR site:twitter.com)");
+        query("TikTok company account","site:tiktok.com");
+        query("LinkedIn company page","site:linkedin.com/company");
+        query("Threads company account","site:threads.com");
+        query("Reddit product discussion","site:reddit.com product review");
+        label("Manufacturer and product feedback",20);
+        query("Manufacturer product reviews","product reviews write a review");
+        query("Merchant review invitation / rewards","customer review rewards review invitation");
+        query("Retailer review pages (only if eligible)","product retailer customer reviews");
+        query("Customer service / warranty","official support warranty contact");
+        label("These search buttons open the selected search engine. They do not claim a matching listing exists. Social accounts may offer only support or discussion, not reviews. Use retailer reviews only when you meet their eligibility requirements.",14);
         label("Submission reminder",20);
         label("Check the website’s rules, use your own account, and submit only one authentic review per platform. If you already reviewed a site, update your existing review instead.",14);
         label("Consumer complaint portals",20);
@@ -67,7 +112,50 @@ public final class MainActivity extends Activity {
     private boolean hasReview(){ if(review.getText().toString().trim().isEmpty()){review.setError("Enter your review first");return false;}return true; }
     private boolean copyReview(){ if(!hasReview()) return false; ClipboardManager clipboard=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE); if(clipboard==null){Toast.makeText(this,"Clipboard unavailable",Toast.LENGTH_LONG).show();return false;} clipboard.setPrimaryClip(ClipData.newPlainText("Consumer review",review.getText().toString()));Toast.makeText(this,"Review copied",Toast.LENGTH_SHORT).show();return true; }
     private void open(String url){ try { startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url))); }catch(ActivityNotFoundException e){Toast.makeText(this,"No browser installed",Toast.LENGTH_LONG).show();} }
-    private void search(String terms){ String name=company.getText().toString().trim();if(name.isEmpty()){company.setError("Enter a company or product");return;}open("https://www.google.com/search?q="+Uri.encode(name+" "+terms)); }
+    private void query(String title,String terms){button(title+" ↗",v->search(terms));}
+    private String quoted(String s){return "\""+s.trim().replace("\"","")+"\"";}
+    private String identityQuery(){
+        java.util.LinkedHashSet<String> names=new java.util.LinkedHashSet<>();
+        String main=company.getText().toString().trim();
+        String other=aliases.getText().toString();
+        String web=domain.getText().toString().trim().replaceFirst("(?i)^https?://","").split("/",2)[0];
+        String model=product.getText().toString().trim();
+        int mode=identity.getSelectedItemPosition();
+        if((mode==0||mode==1)&&!main.isEmpty())names.add(quoted(main));
+        if(mode==0||mode==2)for(String a:other.split("[,;\\n]"))if(!a.trim().isEmpty())names.add(quoted(a));
+        if((mode==0||mode==3)&&!web.isEmpty())names.add(quoted(web));
+        if(mode==4&&!model.isEmpty())names.add(quoted(model));
+        if(names.isEmpty())return "";
+        String base=names.size()==1?names.iterator().next():"("+String.join(" OR ",names)+")";
+        if(mode!=4&&!model.isEmpty())base+=" "+quoted(model);
+        return base;
+    }
+    private void search(String terms){
+        String q=identityQuery();
+        if(q.isEmpty()){Toast.makeText(this,"Enter an identity for the selected search mode",Toast.LENGTH_LONG).show();return;}
+        String[] urls={"https://www.google.com/search?q=","https://www.bing.com/search?q=","https://duckduckgo.com/?q="};
+        open(urls[engine.getSelectedItemPosition()]+Uri.encode(q+" "+terms));
+    }
+    private void showDiscovery(String message){TextView t=new TextView(this);t.setText(message);t.setTextColor(Color.rgb(25,40,56));t.setPadding(0,dp(6),0,dp(6));discovered.addView(t);}
+    private void discover(){
+        if(scanning)return;
+        String value=domain.getText().toString().trim();
+        if(value.isEmpty()){domain.setError("Enter the official website");return;}
+        if(!value.contains("://"))value="https://"+value;
+        final String site=value;
+        scanning=true;discovered.removeAllViews();showDiscovery("Checking public homepage links…");
+        new Thread(()->{
+            try{
+                java.util.List<Discovery.Link> links=Discovery.scan(site);
+                runOnUiThread(()->{
+                    if(isFinishing()||isDestroyed())return;
+                    scanning=false;discovered.removeAllViews();
+                    if(links.isEmpty())showDiscovery("No matching public links found. Try the targeted searches below.");
+                    else for(Discovery.Link link:links){showDiscovery(link.category+" — "+link.url);Button b=new Button(this);b.setText("Open link");b.setAllCaps(false);b.setOnClickListener(v->open(link.url));discovered.addView(b);}
+                });
+            }catch(Exception e){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;scanning=false;discovered.removeAllViews();showDiscovery("Could not scan the public homepage. It may block access or require JavaScript. Use the targeted searches below.");});}
+        }).start();
+    }
     private void destination(String title,String url,String key){
         button(title+" ↗",v->open(url));
         CheckBox c=new CheckBox(this);
