@@ -16,6 +16,8 @@ public final class DiscoveryTest {
         if(links.stream().noneMatch(l->l.category.equals("Facebook review link")))throw new AssertionError("Missing Facebook review link");
         if(links.stream().noneMatch(l->l.category.equals("YouTube channel candidate")))throw new AssertionError("Missing sameAs link");
         if(links.stream().noneMatch(l->l.url.equals("https://example.com/pages/reviews")))throw new AssertionError("Missing relative review link");
+        List<Discovery.Link> numeric=Discovery.extract("<a href='https://www.facebook.com/profile.php?id=123456789&amp;ref=footer'>Facebook</a><a href='https://www.facebook.com/profile.php?ref=footer'>Missing ID</a>",new URI("https://example.com/"));
+        if(numeric.size()!=1||!numeric.get(0).url.equals("https://www.facebook.com/profile.php?id=123456789"))throw new AssertionError("Numeric profile ID not preserved");
         System.out.println("Discovery tests passed: social profiles, Facebook reviews, merchant review links, duplicate and unsafe-link rejection.");
     }
 }
