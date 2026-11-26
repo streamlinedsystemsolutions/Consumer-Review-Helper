@@ -17,7 +17,7 @@ public final class MainActivity extends Activity {
     private LinearLayout root;
     private EditText review, company, aliases, domain, product;
     private Spinner engine, identity;
-    private LinearLayout discovered;
+    private LinearLayout discovered, savedPages;
     private boolean scanning;
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -69,6 +69,12 @@ public final class MainActivity extends Activity {
         button("Discover links on official website",v->discover());
         label("Links found on the official website (review eligibility not verified)",15);
         discovered=new LinearLayout(this);discovered.setOrientation(LinearLayout.VERTICAL);root.addView(discovered);
+        label("Saved review and support pages",20);
+        label("Save pages you have checked yourself. Links and status stay on your device and are grouped by company.",15);
+        button("Add a checked page URL",v->addPage());
+        savedPages=new LinearLayout(this);savedPages.setOrientation(LinearLayout.VERTICAL);root.addView(savedPages);
+        refreshSaved();
+        company.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int a){} public void onTextChanged(CharSequence s,int st,int b,int c){discovered.removeAllViews();refreshSaved();} public void afterTextChanged(Editable s){} });
         label("Independent review platforms",20);
         query("General customer reviews","customer reviews write a review");
         query("Trustpilot","site:trustpilot.com/review");
@@ -154,6 +160,43 @@ public final class MainActivity extends Activity {
                 });
             }catch(Exception e){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;scanning=false;discovered.removeAllViews();showDiscovery("Could not scan the public homepage. It may block access or require JavaScript. Use the targeted searches below.");});}
         }).start();
+    }
+    private String savedKey(){return "pages:"+company.getText().toString().trim().toLowerCase(java.util.Locale.ROOT);}
+    private String pageUrl(String raw){
+        try{
+            java.net.URI u=new java.net.URI(raw.trim());
+            if(!"https".equalsIgnoreCase(u.getScheme())||u.getHost()==null||u.getUserInfo()!=null||raw.length()>2000)return null;
+            return u.toASCIIString();
+        }catch(Exception e){return null;}
+    }
+    private void addPage(){
+        if(company.getText().toString().trim().isEmpty()){company.setError("Enter the company first");return;}
+        EditText input=new EditText(this);input.setSingleLine(true);input.setHint("https://…");input.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle("Save a page you checked").setMessage("Use a genuine company review or customer support page.").setView(input).setNegativeButton("Cancel",null).setPositiveButton("Save",null).create();
+        dialog.setOnShowListener(d->dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            String url=pageUrl(input.getText().toString());if(url==null){input.setError("Enter a valid HTTPS URL");return;}
+            savePage(url);dialog.dismiss();
+        }));dialog.show();
+    }
+    private void savePage(String url){
+        if(company.getText().toString().trim().isEmpty())return;
+        String key=savedKey();
+        java.util.Set<String> pages=new java.util.HashSet<>(prefs.getStringSet(key,java.util.Collections.emptySet()));
+        if(pages.size()>=60&&!pages.contains(url)){Toast.makeText(this,"Saved page limit reached",Toast.LENGTH_SHORT).show();return;}
+        pages.add(url);prefs.edit().putStringSet(key,pages).apply();refreshSaved();
+    }
+    private void refreshSaved(){
+        if(savedPages==null)return;
+        savedPages.removeAllViews();
+        if(company.getText().toString().trim().isEmpty())return;
+        final String key=savedKey();
+        java.util.List<String> pages=new java.util.ArrayList<>(prefs.getStringSet(key,java.util.Collections.emptySet()));java.util.Collections.sort(pages);
+        for(String url:pages){
+            TextView t=new TextView(this);t.setText(url);t.setTextColor(Color.rgb(25,40,56));savedPages.addView(t);
+            Button openButton=new Button(this);openButton.setText("Open saved page");openButton.setAllCaps(false);openButton.setOnClickListener(v->open(url));savedPages.addView(openButton);
+            CheckBox checked=new CheckBox(this);checked.setText("Already submitted / resolved");checked.setChecked(prefs.getBoolean(key+":done:"+url,false));checked.setOnCheckedChangeListener((b,c)->prefs.edit().putBoolean(key+":done:"+url,c).apply());savedPages.addView(checked);
+            Button remove=new Button(this);remove.setText("Remove saved page");remove.setAllCaps(false);remove.setOnClickListener(v->{java.util.Set<String> updated=new java.util.HashSet<>(prefs.getStringSet(key,java.util.Collections.emptySet()));updated.remove(url);prefs.edit().putStringSet(key,updated).remove(key+":done:"+url).apply();refreshSaved();});savedPages.addView(remove);
+        }
     }
     private void destination(String title,String url,String key){
         button(title+" ↗",v->open(url));
