@@ -38,7 +38,14 @@ final class Discovery {
             URI u=base.resolve(raw.trim().replace("&amp;","&").replace("\\/","/"));
             if(!"https".equalsIgnoreCase(u.getScheme())||u.getHost()==null||u.getUserInfo()!=null)return;
             String category=classify(u,base);if(category==null)return;
-            URI cleaned=new URI("https",null,u.getHost(),u.getPort(),u.getPath(),null,null);
+            // Preserve the identifier on Facebook numeric profile links; drop tracking parameters.
+            String query=null;
+            if(hostIs(host(u),"facebook.com") && "/profile.php".equalsIgnoreCase(u.getPath())){
+                Matcher id=Pattern.compile("(?:^|&)id=([0-9]{1,30})(?:&|$)").matcher(u.getRawQuery()==null?"":u.getRawQuery());
+                if(!id.find())return;
+                query="id="+id.group(1);
+            }
+            URI cleaned=new URI("https",null,u.getHost(),u.getPort(),u.getPath(),query,null);
             String url=cleaned.toASCIIString();results.putIfAbsent(url,new Link(category,url));
         }catch(Exception ignored){}
     }
